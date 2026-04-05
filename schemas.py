@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 
@@ -11,5 +12,5 @@ class UserLogin(BaseModel):
     password: str
 class ChatRequest(BaseModel):
     message: str
-    language: str
-    sessionId: str | None = None
+    language: str = "English"
+    sessionId: Optional[str] = "default-session"

@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.sql import func
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
 from database import Base
 
 
@@ -44,6 +45,5 @@ class PDFFile(Base):
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
+    extracted_text = Column(Text, nullable=True)
 
