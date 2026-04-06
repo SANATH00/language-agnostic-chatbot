@@ -1,6 +1,10 @@
+// Import NextResponse to send API responses in Next.js
 import { NextResponse } from 'next/server';
 
+// Predefined chatbot responses categorized by topics
 const RESPONSES = {
+
+  // Fee-related responses in multiple languages
   fee: {
     English: "The fee deadline is March 20. Please check the official portal.",
     Hindi: "फीस जमा करने की अंतिम तिथि 20 मार्च है। कृपया आधिकारिक पोर्टल देखें।",
@@ -14,6 +18,8 @@ const RESPONSES = {
     Punjabi: "ਫੀਸ ਜਮ੍ਹਾ ਕਰਨ ਦੀ ਆਖਰੀ ਮਿਤੀ 20 ਮਾਰਚ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਅਧਿਕਾਰਤ ਪੋਰਟਲ ਵੇਖੋ।",
     Odia: "ଫି ଜମା କରିବାର ଶେଷ ତାରିଖ ମାର୍ଚ୍ଚ ୨୦। ଦୟାକରି ଅଧିକୃତ ପୋର୍ଟାଲ ଦେଖନ୍ତୁ।",
   },
+
+  // Exam-related responses
   exam: {
     English: "Exam timetables will be released soon. Check the notice board.",
     Hindi: "परीक्षा समय-सारणी जल्द जारी होगी। सूचना पट्ट देखें।",
@@ -27,6 +33,8 @@ const RESPONSES = {
     Punjabi: "ਪ੍ਰੀਖਿਆ ਦਾ ਸਮਾਂ-ਸਾਰਣੀ ਜਲਦੀ ਜਾਰੀ ਹੋਵੇਗੀ। ਨੋਟਿਸ ਬੋਰਡ ਦੇਖੋ।",
     Odia: "ପରୀକ୍ଷା ସମୟସୂଚୀ ଶୀଘ୍ର ପ୍ରକାଶ ପାଇବ। ନୋଟିସ ବୋର୍ଡ ଦେଖନ୍ତୁ।",
   },
+
+  // Greeting responses
   hello: {
     English: "Hello! How can I help you today?",
     Hindi: "नमस्ते! मैं आपकी कैसे मदद कर सकता हूँ?",
@@ -40,6 +48,8 @@ const RESPONSES = {
     Punjabi: "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ ਤੁਹਾਡੀ ਕਿਵੇਂ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ?",
     Odia: "ନମସ୍କାର! ମୁଁ ଆପଣଙ୍କୁ କିପରି ସାହାଯ୍ୟ କରିପାରିବି?",
   },
+
+  // Scholarship-related responses
   scholarship: {
     English: "Scholarship applications are open. Visit the admin office.",
     Hindi: "छात्रवृत्ति आवेदन खुले हैं। प्रशासन कार्यालय जाएं।",
@@ -53,6 +63,8 @@ const RESPONSES = {
     Punjabi: "ਸਕਾਲਰਸ਼ਿਪ ਅਰਜ਼ੀਆਂ ਖੁੱਲ੍ਹੀਆਂ ਹਨ। ਪ੍ਰਸ਼ਾਸਨ ਦਫ਼ਤਰ ਜਾਓ।",
     Odia: "ବୃତ୍ତି ଆବେଦନ ଖୋଲା ଅଛି। ପ୍ରଶାସନ କାର୍ଯ୍ୟାଳୟ ପରିଦର୍ଶନ କରନ୍ତୁ।",
   },
+
+  // Library-related responses
   library: {
     English: "Library is open from 9am to 6pm on weekdays.",
     Hindi: "पुस्तकालय सोमवार से शुक्रवार सुबह 9 से शाम 6 बजे तक खुला है।",
@@ -66,6 +78,8 @@ const RESPONSES = {
     Punjabi: "ਲਾਇਬ੍ਰੇਰੀ ਹਫ਼ਤੇ ਦੇ ਦਿਨਾਂ ਵਿੱਚ ਸਵੇਰੇ 9 ਤੋਂ ਸ਼ਾਮ 6 ਵਜੇ ਤੱਕ ਖੁੱਲ੍ਹੀ ਰਹਿੰਦੀ ਹੈ।",
     Odia: "ଲାଇବ୍ରେରୀ ସପ୍ତାହ ଦିନଗୁଡ଼ିକରେ ସକାଳ 9 ରୁ ସନ୍ଧ୍ୟା 6 ପର୍ଯ୍ୟନ୍ତ ଖୋଲା ଥାଏ।",
   },
+
+  // Hostel-related responses
   hostel: {
     English: "For hostel queries, contact the warden office.",
     Hindi: "छात्रावास संबंधित प्रश्नों के लिए वार्डन कार्यालय से संपर्क करें।",
@@ -79,6 +93,8 @@ const RESPONSES = {
     Punjabi: "ਹੋਸਟਲ ਸਵਾਲਾਂ ਲਈ ਵਾਰਡਨ ਦਫ਼ਤਰ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।",
     Odia: "ହଷ୍ଟେଲ ପ୍ରଶ୍ନ ପାଇଁ ୱାର୍ଡେନ କାର୍ଯ୍ୟାଳୟ ସହ ଯୋଗାଯୋଗ କରନ୍ତୁ।",
   },
+
+  // Explanation of how chatbot works
   howwork: {
     English: "I detect your language, understand your intent using NLP, search the knowledge base, and respond in your language.",
     Hindi: "मैं आपकी भाषा पहचानता हूँ, NLP से आशय समझता हूँ, और आपकी भाषा में उत्तर देता हूँ।",
@@ -88,19 +104,27 @@ const RESPONSES = {
   },
 };
 
+// Function to fetch response based on category and language
 function getResponse(category, language) {
-  const cat = RESPONSES[category];
-  if (!cat) return null;
+  const cat = RESPONSES[category]; // Get category object
+  if (!cat) return null; // If category doesn't exist, return null
+
+  // Return response in selected language or fallback options
   return cat[language] || cat.English || cat.default || null;
 }
 
+// API POST handler (runs when frontend sends request)
 export async function POST(req) {
   try {
+    // Extract message and language from request body
     const { message, language } = await req.json();
-    const m = (message || "").toLowerCase();
-    const lang = language || "English";
+
+    const m = (message || "").toLowerCase(); // Convert message to lowercase for matching
+    const lang = language || "English"; // Default language is English
 
     let reply = "";
+
+    // Check keywords in message and assign appropriate response
     if (m.includes("fee")) reply = getResponse("fee", lang);
     else if (m.includes("exam")) reply = getResponse("exam", lang);
     else if (m.includes("scholarship")) reply = getResponse("scholarship", lang);
@@ -109,10 +133,15 @@ export async function POST(req) {
     else if (m.includes("hostel")) reply = getResponse("hostel", lang);
     else if (m.includes("how") && m.includes("work")) reply = getResponse("howwork", lang);
 
+    // Default reply if no keyword matched
     if (!reply) reply = "Thank you for your query. Please contact the admin office.";
 
+    // Send JSON response back to frontend
     return NextResponse.json({ reply });
+
   } catch (error) {
+
+    // Handle any errors during processing
     return NextResponse.json({ reply: "Error processing request." });
   }
 }

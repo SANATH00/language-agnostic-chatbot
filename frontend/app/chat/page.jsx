@@ -161,8 +161,14 @@ export default function ChatPage() {
         body: JSON.stringify({ message: text, language: selectedLang.name }),
       });
       const data = await res.json();
-      setMessages((m) => [...m, { role: "assistant", text: data.reply || "No response." }]);
-    } catch {
+setMessages((m) => [
+  ...m,
+  {
+    role: "assistant",
+    text: data.reply || "No response.",
+    source: data.source || "Rule-based response", // ✅ ADD THIS
+  },
+]);    } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Connection error. Please try again." }]);
     } finally {
       setLoading(false);
@@ -260,26 +266,47 @@ export default function ChatPage() {
                   border: "1px solid rgba(99,102,241,0.25)",
                 }}>🤖</div>
               )}
-              <div style={{
-                maxWidth: "72%",
-                padding: msg.isSystem ? "8px 14px" : "12px 16px",
-                fontSize: 14, lineHeight: 1.75,
-                borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px",
-                wordBreak: "break-word",
-                ...(msg.role === "user" ? {
-                  color: "#fff",
-                  background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-                } : msg.isSystem ? {
-                  color: "rgba(160,200,170,0.8)",
-                  background: "rgba(99,241,150,0.05)",
-                  border: "1px solid rgba(99,200,130,0.15)",
-                  fontSize: 13,
-                } : {
-                  color: "#d0d8ff",
-                  background: "rgba(99,102,241,0.07)",
-                  border: "1px solid rgba(99,102,241,0.13)",
-                }),
-              }}>{msg.text}</div>
+              <div>
+  <div style={{
+    maxWidth: "72%",
+    padding: msg.isSystem ? "8px 14px" : "12px 16px",
+    fontSize: 14,
+    lineHeight: 1.75,
+    borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px",
+    wordBreak: "break-word",
+    ...(msg.role === "user"
+      ? {
+          color: "#fff",
+          background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+        }
+      : msg.isSystem
+      ? {
+          color: "rgba(160,200,170,0.8)",
+          background: "rgba(99,241,150,0.05)",
+          border: "1px solid rgba(99,200,130,0.15)",
+          fontSize: 13,
+        }
+      : {
+          color: "#d0d8ff",
+          background: "rgba(99,102,241,0.07)",
+          border: "1px solid rgba(99,102,241,0.13)",
+        }),
+  }}>
+    {msg.text}
+  </div>
+
+  {/* ✅ ADD THIS BELOW BOT MESSAGE */}
+  {msg.role === "assistant" && !msg.isSystem && (
+    <div style={{
+      fontSize: 11,
+      color: "rgba(160,170,220,0.5)",
+      marginTop: 4,
+      marginLeft: 4,
+    }}>
+      Source: {msg.source || "Rule-based response"}
+    </div>
+  )}
+</div>
               {msg.role === "user" && (
                 <div style={{
                   width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
