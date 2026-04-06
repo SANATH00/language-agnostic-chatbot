@@ -1,21 +1,38 @@
+# ==========================================
+# File: auth.py
+# Description: Handles user authentication and JWT token management
+# ==========================================
+
+# Importing required libraries for authentication and security
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 
-# Secret key (later we’ll move this to .env)
+
+# Secret key used to sign JWT tokens (should be stored in .env in production)
 SECRET_KEY = "niha_super_secret_key"
+
+# Algorithm used for encoding JWT
 ALGORITHM = "HS256"
+
+# Token expiry time (in minutes)
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
+
+# Password hashing context using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-# 🔐 Hash password
+# 🔐 This function hashes the plain password before storing in database
+# It ensures passwords are stored securely (not in plain text)
 def hash_password(password: str):
     return pwd_context.hash(password)
 
 
-# 🔍 Verify password
+# 🔍 This function verifies the entered password with the stored hashed password
+# Returns True if password matches, otherwise False
 def verify_password(plain_password, hashed_password):
     try:
         return pwd_context.verify(plain_password, hashed_password)
@@ -23,25 +40,40 @@ def verify_password(plain_password, hashed_password):
         return False
 
 
-# 🎟 Create JWT token
+# 🎟 This function creates a JWT access token for authenticated users
+# The token contains user data and expiry time
 def create_access_token(data: dict):
     to_encode = data.copy()
+
+    # Set token expiration time
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
+
+    # Encode the token using secret key and algorithm
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
-from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
 
+
+# OAuth2 scheme to extract token from request header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
+# 🔐 This function verifies and decodes the JWT token
+# It ensures the user is authenticated before accessing protected routes
 def verify_token(token: str = Depends(oauth2_scheme)):
     try:
+        # Decode token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # Extract user email (stored in "sub")
         email: str = payload.get("sub")
+
+        # If email not found → invalid token
         if email is None:
             raise HTTPException(status_code=401, detail="Invalid token")
+
         return email
+
     except JWTError:
+        # If token is invalid or expired
         raise HTTPException(status_code=401, detail="Invalid token")
