@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+routers/
+uploads/
+auth.py
+database.py
+main.py
+models.py
+requirements.txt
+schemas.py

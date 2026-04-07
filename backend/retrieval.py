@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -42,3 +43,19 @@ def retrieve_relevant_chunks(query: str, db: Session, top_k: int = 3):
     top_scores = [similarities[i] for i in top_indices]
 
     return top_chunks, top_sources
+=======
+import models
+
+def retrieve_relevant_chunks(query: str, db):
+    pdfs = db.query(models.PDFFile).all()
+
+    print("🚀 RETRIEVAL FUNCTION CALLED")
+
+    for pdf in pdfs:
+        if pdf.extracted_text:
+            print("✅ FOUND PDF TEXT")
+            return pdf.extracted_text[:300]
+
+    print("❌ NO TEXT FOUND")
+    return None
+>>>>>>> a2af1e6aee15afb490902cc7ef4da78b4c4e0dc4
