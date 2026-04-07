@@ -18,3 +18,5 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(files.router)
+from routers import retrieve
+app.include_router(retrieve.router)

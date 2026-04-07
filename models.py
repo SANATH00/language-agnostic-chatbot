@@ -46,4 +46,5 @@ class PDFFile(Base):
     file_path = Column(String, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
     extracted_text = Column(Text, nullable=True)
+    chunks = Column(Text, nullable=True)
 
