@@ -3,7 +3,6 @@
 # Description: Handles PDF upload, storage, and download
 # ==========================================
 
-# Importing required modules
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
@@ -11,93 +10,126 @@ from database import get_db
 import models
 from auth import verify_token
 import os
+import pdfplumber
 
-# Library for extracting text from PDF
-from PyPDF2 import PdfReader
+# 🔒 File validation limits
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_PAGES = 50                          # Max 50 pages allowed
+MIN_FILE_SIZE_BYTES = 1024              # Minimum 1 KB
 
-
-# Creating router instance
 router = APIRouter()
 
 
-# 📄 Upload PDF endpoint
-# This endpoint allows users to upload PDF files and stores them in the system
-@router.post("/upload-pdf")
+# 📤 Upload PDF
+@router.post('/upload-pdf')
 def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
-    # Check if uploaded file is PDF
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files allowed")
 
-    # Get current user from database
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    # 🔹 Step 1: Check file type
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Create uploads folder if it doesn't exist
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
+    # 🔹 Step 2: Read file content
+    contents = file.file.read()
 
-    # Define file path
-    file_path = os.path.join(upload_dir, file.filename)
+    # 🔹 Debug (optional)
+    print("File size MB:", len(contents) / (1024 * 1024))
 
-    # 💾 Save file to folder
-    with open(file_path, "wb") as buffer:
-        buffer.write(file.file.read())
+    # 🔹 Step 3: Validate file size
+    if len(contents) < MIN_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File is too small or empty")
 
-    # 🔥 Extract text from PDF (IMPORTANT for Step 5 & 6)
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File exceeds 10MB limit")
+
+    # 🔹 Step 4: Reset pointer (IMPORTANT)
+    file.file.seek(0)
+
+    # 🔹 Step 5: Save TEMP file
+    os.makedirs("uploads", exist_ok=True)
+    temp_path = f"uploads/temp_{file.filename}"
+
+    with open(temp_path, "wb") as f:
+        f.write(contents)
+
+    # 🔹 Step 6: Check number of pages
+    with pdfplumber.open(temp_path) as pdf:
+        page_count = len(pdf.pages)
+
+    # 🔹 Step 7: Validate pages (OUTSIDE)
+    if page_count > MAX_PAGES:
+        os.remove(temp_path)
+        raise HTTPException(
+            status_code=400,
+            detail=f"PDF has {page_count} pages. Max allowed is 50"
+        )
+
+    # 🔹 Step 8: Save FINAL file (handle duplicates)
+    file_path = f"uploads/{file.filename}"
+
+    if os.path.exists(file_path):
+        base, ext = os.path.splitext(file.filename)
+        file_path = f"uploads/{base}_new{ext}"
+
+    os.rename(temp_path, file_path)
+
+    # 🔹 Step 9: Extract text
     extracted_text = ""
-    try:
-        reader = PdfReader(file_path)
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                extracted_text += text
-    except Exception as e:
-        extracted_text = ""
 
-    # 🗄 Save metadata + extracted text in database
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            extracted_text += page.extract_text() or ""
+
+    # 🔹 Step 10: Get user
+    db_user = db.query(models.User).filter(
+        models.User.email == current_user
+    ).first()
+
+    # 🔹 Step 11: Save to DB
     new_file = models.PDFFile(
         user_id=db_user.id,
         filename=file.filename,
         file_path=file_path,
-        extracted_text=extracted_text   # IMPORTANT FIELD
+        extracted_text=extracted_text
     )
 
     db.add(new_file)
     db.commit()
 
-    return {"message": "PDF uploaded successfully"}
+    # 🔹 Step 12: Response
+    return {
+        "message": "PDF uploaded successfully",
+        "pages": page_count
+    }
 
 
-# 📥 Download PDF endpoint
-# This endpoint allows users to download their uploaded PDFs
+# 📥 Download PDF
 @router.get("/download/{file_id}")
 def download_pdf(
     file_id: int,
     db: Session = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
-    # Get current user
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    db_user = db.query(models.User).filter(
+        models.User.email == current_user
+    ).first()
 
-    # Find file in database
-    pdf_file = db.query(models.PDFFile).filter(models.PDFFile.id == file_id).first()
+    pdf_file = db.query(models.PDFFile).filter(
+        models.PDFFile.id == file_id
+    ).first()
 
-    # If file not found
     if not pdf_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    # 🔒 Security check: ensure file belongs to logged-in user
     if pdf_file.user_id != db_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this file")
+        raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Check file exists in system
     if not os.path.exists(pdf_file.file_path):
-        raise HTTPException(status_code=404, detail="File not found on server")
+        raise HTTPException(status_code=404, detail="File missing on server")
 
-    # Return file as response
     return FileResponse(
         path=pdf_file.file_path,
         filename=pdf_file.filename,

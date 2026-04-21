@@ -19,66 +19,34 @@ router = APIRouter()
 
 
 # 💬 Chat endpoint
-# This endpoint receives user message, processes it, and returns a response
-@router.post("/chat", response_model=schemas.ChatResponse)
-def chat(
+# 🔹 New endpoint for Retrieval-Based Response (RAG)
+@router.post('/api/rag-response')
+def rag_response(
     request: schemas.ChatRequest,
-    db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    db: Session = Depends(get_db)
 ):
 
-    # 👇 EVERYTHING must be inside this function (same indentation)
-
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
-
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    lang_map = {
-        "en": "English",
-        "es": "Spanish",
-        "hi": "Hindi",
-        "fr": "French"
-    }
-
-    # SAFE language detect
-    try:
-        detected_language = lang_map.get(detect(request.message), "Unknown")
-    except:
-        detected_language = "Unknown"
-
-    # SAFE retrieval
-    try:
-        relevant_chunk = retrieve_relevant_chunks(request.message, db)
-    except Exception as e:
-        print("Retrieval error:", e)
-        relevant_chunk = None
-
-    if relevant_chunk:
-        bot_reply = relevant_chunk
-        source = "PDF"
-    else:
-        bot_reply = f"Echo: {request.message}"
-        source = "LLM"
-
-    # Save to DB
-    new_chat = models.ChatLog(
-        user_id=db_user.id,
-        session_id=request.sessionId,
-        user_message=request.message,
-        bot_response=bot_reply,
-        language=detected_language
+    # 🔹 Step 1: Get relevant chunks from uploaded PDFs
+    chunks, sources = retrieve_relevant_chunks(
+        request.message,
+        db,
+        top_k=3  # get top 3 relevant matches
     )
 
-    db.add(new_chat)
-    db.commit()
+    # 🔹 Step 2: Check if any relevant content found
+    if chunks and chunks[0]:
+        response = f"Based on uploaded documents: {chunks[0][:300]}..."
+        source = sources[0]
+    else:
+        response = "No relevant information found in uploaded documents."
+        source = "No document"
 
-    # ✅ THIS MUST BE INSIDE FUNCTION
+    # 🔹 Step 3: Return structured response
     return {
-        "response": bot_reply,
-        "source": source
+        "response": response,
+        "source": source,
+        "chunks": chunks
     }
-
 # 📜 Get chat history
 # This endpoint returns all chat logs of the logged-in user
 @router.get("/logs")
