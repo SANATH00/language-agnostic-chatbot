@@ -12,7 +12,7 @@ const LANGUAGES = [
   { code: "kn", name: "Kannada", label: "KN", native: "ಕನ್ನಡ" },
   { code: "ml", name: "Malayalam", label: "ML", native: "മലയാളം" },
   { code: "pa", name: "Punjabi", label: "PA", native: "ਪੰਜਾਬੀ" },
-  { code: "or", name: "Odia", label: "OR", native: "ଓଡ଼ିଆ" },
+  { code: "or", name: "Odia", label: "OR", native: "ଓଡ଼ིଆ" },
 ];
 
 function TypingDots() {
@@ -123,13 +123,18 @@ export default function ChatPage() {
   }, [input]);
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
+  const file = e.target.files[0];
+  if (!file) return;
+  setUploading(true);
+  const formData = new FormData();
+  formData.append("file", file);
+
+  // ✅ Send token inside formData, not just headers
+  const uploadToken = localStorage.getItem('token');
+  if (uploadToken) formData.append("token", uploadToken);
+
+  try {
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (res.ok) {
         setUploadedFile(file.name);
         setMessages((m) => [...m, {
@@ -155,20 +160,23 @@ export default function ChatPage() {
     setInput("");
     setLoading(true);
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, language: selectedLang.name }),
+        body: JSON.stringify({
+          message: text,
+          language: selectedLang.name,
+          token: token
+        }),
       });
       const data = await res.json();
-setMessages((m) => [
-  ...m,
-  {
-    role: "assistant",
-    text: data.reply || "No response.",
-    source: data.source || "Rule-based response", // ✅ ADD THIS
-  },
-]);    } catch {
+      setMessages((m) => [...m, {
+        role: "assistant",
+        text: data.reply || "No response.",
+        source: data.source
+      }]);
+    } catch {
       setMessages((m) => [...m, { role: "assistant", text: "Connection error. Please try again." }]);
     } finally {
       setLoading(false);
@@ -253,71 +261,76 @@ setMessages((m) => [
           {messages.map((msg, i) => (
             <div key={i} style={{
               display: "flex",
-              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+              flexDirection: "column",
+              alignItems: msg.role === "user" ? "flex-end" : "flex-start",
               animation: "lac-floatIn 0.3s ease",
               marginBottom: 8,
             }}>
-              {msg.role === "assistant" && (
+              {/* Bubble row */}
+              <div style={{
+                display: "flex",
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                width: "100%",
+              }}>
+                {msg.role === "assistant" && (
+                  <div style={{
+                    width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14, marginRight: 10, alignSelf: "flex-end",
+                    background: "rgba(99,102,241,0.12)",
+                    border: "1px solid rgba(99,102,241,0.25)",
+                  }}>🤖</div>
+                )}
                 <div style={{
-                  width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, marginRight: 10, alignSelf: "flex-end",
-                  background: "rgba(99,102,241,0.12)",
-                  border: "1px solid rgba(99,102,241,0.25)",
-                }}>🤖</div>
-              )}
-              <div>
-  <div style={{
-    maxWidth: "72%",
-    padding: msg.isSystem ? "8px 14px" : "12px 16px",
-    fontSize: 14,
-    lineHeight: 1.75,
-    borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px",
-    wordBreak: "break-word",
-    ...(msg.role === "user"
-      ? {
-          color: "#fff",
-          background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-        }
-      : msg.isSystem
-      ? {
-          color: "rgba(160,200,170,0.8)",
-          background: "rgba(99,241,150,0.05)",
-          border: "1px solid rgba(99,200,130,0.15)",
-          fontSize: 13,
-        }
-      : {
-          color: "#d0d8ff",
-          background: "rgba(99,102,241,0.07)",
-          border: "1px solid rgba(99,102,241,0.13)",
-        }),
-  }}>
-    {msg.text}
-  </div>
+                  maxWidth: "72%",
+                  padding: msg.isSystem ? "8px 14px" : "12px 16px",
+                  fontSize: 14, lineHeight: 1.75,
+                  borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px",
+                  wordBreak: "break-word",
+                  whiteSpace: "pre-wrap",
+                  ...(msg.role === "user" ? {
+                    color: "#fff",
+                    background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                  } : msg.isSystem ? {
+                    color: "rgba(160,200,170,0.8)",
+                    background: "rgba(99,241,150,0.05)",
+                    border: "1px solid rgba(99,200,130,0.15)",
+                    fontSize: 13,
+                  } : {
+                    color: "#d0d8ff",
+                    background: "rgba(99,102,241,0.07)",
+                    border: "1px solid rgba(99,102,241,0.13)",
+                  }),
+                }}>{msg.text}</div>
+                {msg.role === "user" && (
+                  <div style={{
+                    width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14, marginLeft: 10, alignSelf: "flex-end",
+                    background: "rgba(99,102,241,0.15)",
+                    border: "1px solid rgba(99,102,241,0.3)",
+                  }}>👤</div>
+                )}
+              </div>
 
-  {/* ✅ ADD THIS BELOW BOT MESSAGE */}
-  {msg.role === "assistant" && !msg.isSystem && (
-    <div style={{
-      fontSize: 11,
-      color: "rgba(160,170,220,0.5)",
-      marginTop: 4,
-      marginLeft: 4,
-    }}>
-      Source: {msg.source || "Rule-based response"}
-    </div>
-  )}
-</div>
-              {msg.role === "user" && (
+              {/* ✅ Source shown below bot bubble */}
+              {msg.role === "assistant" && msg.source && (
                 <div style={{
-                  width: 30, height: 30, borderRadius: "50%", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 14, marginLeft: 10, alignSelf: "flex-end",
-                  background: "rgba(99,102,241,0.15)",
-                  border: "1px solid rgba(99,102,241,0.3)",
-                }}>👤</div>
+                  fontSize: 11,
+                  color: "rgba(160,170,220,0.5)",
+                  marginTop: 4,
+                  marginLeft: 40,
+                  fontStyle: "italic",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}>
+                  📄 Source: {msg.source}
+                </div>
               )}
             </div>
           ))}
+
           {loading && (
             <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 8 }}>
               <div style={{
@@ -361,7 +374,6 @@ setMessages((m) => [
             </div>
           )}
 
-          {/* ✅ FIX 1: removed overflow:hidden so dropdown is not clipped */}
           <div style={{
             background: "rgba(18,22,40,0.95)",
             border: "1px solid rgba(99,102,241,0.22)",
@@ -430,7 +442,6 @@ setMessages((m) => [
                   <span style={{ fontSize: 8, opacity: 0.6 }}>▼</span>
                 </button>
 
-                {/* ✅ FIX 2: zIndex 9999 so dropdown appears above everything */}
                 {dropdownOpen && (
                   <div style={{
                     position: "absolute", bottom: "calc(100% + 8px)", left: 0,

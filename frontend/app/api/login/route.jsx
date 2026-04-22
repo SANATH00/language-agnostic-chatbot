@@ -1,45 +1,35 @@
-// Import NextResponse to send API responses in Next.js
 import { NextResponse } from 'next/server';
 
-// Import jsonwebtoken library to create JWT tokens
-import jwt from 'jsonwebtoken';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-// Secret key used to sign the JWT (stored in .env for security)
-// If not found, fallback to default string
-const JWT_SECRET = process.env.JWT_SECRET || 'your-ultra-secure-secret-key';
-
-// API POST handler (used for login)
 export async function POST(req) {
   try {
-    // Extract email and password from request body
     const { email, password } = await req.json();
 
-    // Create JWT token with user data
-    const token = jwt.sign(
-      { 
-        email: email,  // Store user email in token
-        role: 'user'   // Assign default role
-      },
-      JWT_SECRET,      // Secret key for signing token
-      { expiresIn: '1d' } // Token validity (1 day)
-    );
+    // Call FastAPI login instead of generating our own token
+    const formData = new URLSearchParams();
+    formData.append('username', email);
+    formData.append('password', password);
 
-    // Send success response with token and user info
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formData.toString(),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return NextResponse.json({ message: data.detail || 'Login failed' }, { status: 401 });
+    }
+
     return NextResponse.json({
-      message: "Login successful",
-      token: token, // JWT token returned to frontend
-      user: { 
-        name: "Developer", // Static name (can be dynamic later)
-        email: email       // User email
-      }
-    }, { status: 200 });
+      message: 'Login successful',
+      token: data.access_token,  // this is the real FastAPI token
+      user: { email: email }
+    });
 
   } catch (error) {
-
-    // Handle any server errors
-    return NextResponse.json(
-      { message: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: 'Server error' }, { status: 500 });
   }
 }
