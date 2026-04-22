@@ -1,14 +1,11 @@
-<<<<<<< HEAD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from sqlalchemy.orm import Session
-from models import PDFFile
+from .models import PDFFile
 
 def retrieve_relevant_chunks(query: str, db: Session, top_k: int = 3):
-    # Get all PDFs from database
     pdfs = db.query(PDFFile).all()
-
     if not pdfs:
         return None, None
 
@@ -26,36 +23,16 @@ def retrieve_relevant_chunks(query: str, db: Session, top_k: int = 3):
     if not all_chunks:
         return None, None
 
-    # TF-IDF vectorization
     vectorizer = TfidfVectorizer(stop_words='english')
     all_texts = [query] + all_chunks
     tfidf_matrix = vectorizer.fit_transform(all_texts)
 
-    # Cosine similarity between query and chunks
     query_vector = tfidf_matrix[0]
     chunk_vectors = tfidf_matrix[1:]
     similarities = cosine_similarity(query_vector, chunk_vectors)[0]
 
-    # Get top_k most relevant chunks
     top_indices = np.argsort(similarities)[::-1][:top_k]
     top_chunks = [all_chunks[i] for i in top_indices]
     top_sources = [chunk_sources[i] for i in top_indices]
-    top_scores = [similarities[i] for i in top_indices]
 
     return top_chunks, top_sources
-=======
-import models
-
-def retrieve_relevant_chunks(query: str, db):
-    pdfs = db.query(models.PDFFile).all()
-
-    print("🚀 RETRIEVAL FUNCTION CALLED")
-
-    for pdf in pdfs:
-        if pdf.extracted_text:
-            print("✅ FOUND PDF TEXT")
-            return pdf.extracted_text[:300]
-
-    print("❌ NO TEXT FOUND")
-    return None
->>>>>>> a2af1e6aee15afb490902cc7ef4da78b4c4e0dc4

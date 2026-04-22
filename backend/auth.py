@@ -10,7 +10,6 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
-
 # Secret key used to sign JWT tokens (should be stored in .env in production)
 SECRET_KEY = "niha_super_secret_key"
 
@@ -60,20 +59,14 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # 🔐 This function verifies and decodes the JWT token
 # It ensures the user is authenticated before accessing protected routes
-def verify_token(token: str = Depends(oauth2_scheme)):
+# Remove the OAuth2 scheme dependency from verify_token
+def verify_token(token: str):
     try:
-        # Decode token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-
-        # Extract user email (stored in "sub")
-        email: str = payload.get("sub")
-
-        # If email not found → invalid token
+        # check both "sub" and "email" since token uses "email" key
+        email: str = payload.get("sub") or payload.get("email")
         if email is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-
         return email
-
     except JWTError:
-        # If token is invalid or expired
         raise HTTPException(status_code=401, detail="Invalid token")

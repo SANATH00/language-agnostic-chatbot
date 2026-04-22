@@ -3,103 +3,125 @@
 # Description: Handles PDF upload, storage, and download
 # ==========================================
 
-# Importing required modules
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
-from database import get_db
-import models
-from auth import verify_token
+from ..database import get_db
+from .. import models
+from ..auth import verify_token
+from typing import Optional
 import os
-
-# Library for extracting text from PDF
+import pdfplumber
 from PyPDF2 import PdfReader
 
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+MAX_PAGES = 50
+MIN_FILE_SIZE_BYTES = 1024
 
-# Creating router instance
 router = APIRouter()
 
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i:i+chunk_size])
+        chunks.append(chunk)
+    return chunks
 
-# 📄 Upload PDF endpoint
-# This endpoint allows users to upload PDF files and stores them in the system
-@router.post("/upload-pdf")
-def upload_pdf(
+@router.post('/upload-pdf')
+async def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-    # Check if uploaded file is PDF
-    if not file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files allowed")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.replace("Bearer ", "").strip()
+    current_user = verify_token(token)
 
-    # Get current user from database
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Create uploads folder if it doesn't exist
-    upload_dir = "uploads"
-    os.makedirs(upload_dir, exist_ok=True)
+    contents = await file.read()
 
-    # Define file path
-    file_path = os.path.join(upload_dir, file.filename)
+    if len(contents) < MIN_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File is too small or empty")
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="File exceeds 10MB limit")
 
-    # 💾 Save file to folder
-    with open(file_path, "wb") as buffer:
-        buffer.write(file.file.read())
+    os.makedirs("uploads", exist_ok=True)
+    temp_path = f"uploads/temp_{file.filename}"
+    with open(temp_path, "wb") as f:
+        f.write(contents)
 
-    # 🔥 Extract text from PDF (IMPORTANT for Step 5 & 6)
+    with pdfplumber.open(temp_path) as pdf:
+        page_count = len(pdf.pages)
+
+    if page_count > MAX_PAGES:
+        os.remove(temp_path)
+        raise HTTPException(status_code=400, detail=f"PDF has {page_count} pages. Max allowed is 50")
+
+    file_path = f"uploads/{file.filename}"
+    if os.path.exists(file_path):
+        base, ext = os.path.splitext(file.filename)
+        file_path = f"uploads/{base}_new{ext}"
+    os.rename(temp_path, file_path)
+
     extracted_text = ""
     try:
-        reader = PdfReader(file_path)
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                extracted_text += text
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                extracted_text += page.extract_text() or ""
+        print(f"pdfplumber extracted {len(extracted_text)} characters")
     except Exception as e:
-        extracted_text = ""
+        print("pdfplumber failed, trying PyPDF2:", e)
+        try:
+            reader = PdfReader(file_path)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text
+        except Exception as e2:
+            print("PyPDF2 also failed:", e2)
 
-    # 🗄 Save metadata + extracted text in database
+    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    chunks = chunk_text(extracted_text) if extracted_text else []
+
     new_file = models.PDFFile(
         user_id=db_user.id,
         filename=file.filename,
         file_path=file_path,
-        extracted_text=extracted_text   # IMPORTANT FIELD
+        extracted_text=extracted_text,
+        chunks=str(chunks)
     )
-
     db.add(new_file)
     db.commit()
 
-    return {"message": "PDF uploaded successfully"}
+    return {"message": "PDF uploaded successfully", "pages": page_count}
 
 
-# 📥 Download PDF endpoint
-# This endpoint allows users to download their uploaded PDFs
 @router.get("/download/{file_id}")
 def download_pdf(
     file_id: int,
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-    # Get current user
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    token = authorization.replace("Bearer ", "").strip()
+    current_user = verify_token(token)
 
-    # Find file in database
+    db_user = db.query(models.User).filter(models.User.email == current_user).first()
     pdf_file = db.query(models.PDFFile).filter(models.PDFFile.id == file_id).first()
 
-    # If file not found
     if not pdf_file:
         raise HTTPException(status_code=404, detail="File not found")
-
-    # 🔒 Security check: ensure file belongs to logged-in user
     if pdf_file.user_id != db_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this file")
-
-    # Check file exists in system
+        raise HTTPException(status_code=403, detail="Not authorized")
     if not os.path.exists(pdf_file.file_path):
-        raise HTTPException(status_code=404, detail="File not found on server")
+        raise HTTPException(status_code=404, detail="File missing on server")
 
-    # Return file as response
-    return FileResponse(
-        path=pdf_file.file_path,
-        filename=pdf_file.filename,
-        media_type="application/pdf"
-    )
+    return FileResponse(path=pdf_file.file_path, filename=pdf_file.filename, media_type="application/pdf")

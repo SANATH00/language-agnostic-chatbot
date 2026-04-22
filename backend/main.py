@@ -3,22 +3,26 @@
 # Description: Entry point of the FastAPI application
 # ==========================================
 
-# Importing required modules to initialize FastAPI app and database
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI
-from database import engine, Base
-from routers import auth, chat, files
+from fastapi.middleware.cors import CORSMiddleware
+from .database import engine, Base
+from .routers import auth, chat, files, translate, rag
 
-
-# This creates all database tables automatically if they do not exist
-Base.metadata.create_all(bind=engine)
-
-
-# Creating FastAPI application instance
 app = FastAPI()
 
+# ✅ Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],        # ✅ this allows Authorization header
+)
 
-# Including different route modules into the main application
-# This connects all API endpoints (auth, chat, file upload, etc.) to the app
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(files.router)
+app.include_router(translate.router)
+app.include_router(rag.router)

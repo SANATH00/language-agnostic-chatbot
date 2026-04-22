@@ -2,66 +2,52 @@
 # File: chat.py
 # Description: Handles chatbot interaction and chat history
 # ==========================================
-
-# Importing required modules for routing, database, and authentication
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
-from database import get_db
-import models, schemas
-from auth import verify_token
+from ..database import get_db
+from .. import models, schemas
+from ..auth import verify_token
 from langdetect import detect
+from ..retrieval import retrieve_relevant_chunks
+from typing import Optional
 
-# Importing retrieval function (Step 7)
-from retrieval import retrieve_relevant_chunks
-
-# Creating router instance
 router = APIRouter()
 
-
-# 💬 Chat endpoint
-# This endpoint receives user message, processes it, and returns a response
 @router.post("/chat", response_model=schemas.ChatResponse)
 def chat(
     request: schemas.ChatRequest,
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-
-    # 👇 EVERYTHING must be inside this function (same indentation)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    current_user = verify_token(authorization.replace("Bearer ", "").strip())
 
     db_user = db.query(models.User).filter(models.User.email == current_user).first()
-
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    lang_map = {
-        "en": "English",
-        "es": "Spanish",
-        "hi": "Hindi",
-        "fr": "French"
-    }
-
-    # SAFE language detect
+    lang_map = {"en": "English", "hi": "Hindi", "fr": "French", "es": "Spanish"}
     try:
         detected_language = lang_map.get(detect(request.message), "Unknown")
     except:
         detected_language = "Unknown"
 
-    # SAFE retrieval
     try:
-        relevant_chunk = retrieve_relevant_chunks(request.message, db)
+        chunks, sources = retrieve_relevant_chunks(request.message, db)
+        relevant_chunk = chunks[0] if chunks else None
+        source = sources[0] if sources else "Rule-based response"
     except Exception as e:
         print("Retrieval error:", e)
         relevant_chunk = None
+        source = "Rule-based response"
 
     if relevant_chunk:
-        bot_reply = relevant_chunk
-        source = "PDF"
+        bot_reply = f"Based on your documents: {relevant_chunk}"
     else:
         bot_reply = f"Echo: {request.message}"
-        source = "LLM"
+        source = "Rule-based response"
 
-    # Save to DB
     new_chat = models.ChatLog(
         user_id=db_user.id,
         session_id=request.sessionId,
@@ -69,30 +55,40 @@ def chat(
         bot_response=bot_reply,
         language=detected_language
     )
-
     db.add(new_chat)
     db.commit()
 
-    # ✅ THIS MUST BE INSIDE FUNCTION
-    return {
-        "response": bot_reply,
-        "source": source
-    }
+    return {"response": bot_reply, "source": source, "language": detected_language}
 
-# 📜 Get chat history
-# This endpoint returns all chat logs of the logged-in user
+
+@router.post('/api/rag-response')
+def rag_response(
+    request: schemas.ChatRequest,
+    db: Session = Depends(get_db)
+):
+    chunks, sources = retrieve_relevant_chunks(request.message, db, top_k=3)
+
+    if chunks and chunks[0]:
+        response = f"Based on uploaded documents: {chunks[0][:300]}..."
+        source = sources[0]
+    else:
+        response = "No relevant information found in uploaded documents."
+        source = "No document"
+
+    return {"response": response, "source": source, "chunks": chunks}
+
+
 @router.get("/logs")
 def get_logs(
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-    # Get current user
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    current_user = verify_token(authorization.replace("Bearer ", "").strip())
+
     db_user = db.query(models.User).filter(models.User.email == current_user).first()
-
-    # Fetch all chat logs of that user
     logs = db.query(models.ChatLog).filter(models.ChatLog.user_id == db_user.id).all()
-
-    # Return formatted response
     return [
         {
             "user_message": log.user_message,
