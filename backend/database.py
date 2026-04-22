@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 # This is the database connection URL
 # It contains username, password, host, port, and database name
-DATABASE_URL = "postgresql://postgres:naaz018@localhost/chatbot_db"
+DATABASE_URL = "postgresql://postgres:12345@localhost/chatbot_db"
 
 # create_engine is used to establish connection with the PostgreSQL database
 engine = create_engine(DATABASE_URL)

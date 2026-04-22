@@ -4,8 +4,8 @@
 import fitz  # PyMuPDF - library for reading PDF files
 import os
 from sqlalchemy.orm import Session
-from database import SessionLocal
-from models import PDFFile
+from .database import SessionLocal
+from .models import PDFFile
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     # Open the PDF file from the given path

@@ -1,105 +1,107 @@
-# ==========================================
-# File: files.py
-# Description: Handles PDF upload, storage, and download
-# ==========================================
-
-# Importing required modules
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Header
 from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
-from database import get_db
-import models
-from auth import verify_token
+from ..database import get_db
+from .. import models
+from ..auth import verify_token
+from typing import Optional
 import os
-
-# Library for extracting text from PDF
+import pdfplumber
 from PyPDF2 import PdfReader
 
-
-# Creating router instance
 router = APIRouter()
 
+def chunk_text(text, chunk_size=500):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), chunk_size):
+        chunk = " ".join(words[i:i+chunk_size])
+        chunks.append(chunk)
+    return chunks
 
-# 📄 Upload PDF endpoint
-# This endpoint allows users to upload PDF files and stores them in the system
 @router.post("/upload-pdf")
-def upload_pdf(
+async def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-    # Check if uploaded file is PDF
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.replace("Bearer ", "").strip()
+    current_user = verify_token(token)
+
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
 
-    # Get current user from database
     db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    if not db_user:
+        raise HTTPException(status_code=401, detail="User not found")
 
-    # Create uploads folder if it doesn't exist
     upload_dir = "uploads"
     os.makedirs(upload_dir, exist_ok=True)
-
-    # Define file path
     file_path = os.path.join(upload_dir, file.filename)
 
-    # 💾 Save file to folder
+    contents = await file.read()
     with open(file_path, "wb") as buffer:
-        buffer.write(file.file.read())
+        buffer.write(contents)
 
-    # 🔥 Extract text from PDF (IMPORTANT for Step 5 & 6)
     extracted_text = ""
     try:
-        reader = PdfReader(file_path)
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                extracted_text += text
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text
+        print(f"pdfplumber extracted {len(extracted_text)} characters")
     except Exception as e:
-        extracted_text = ""
+        print("pdfplumber failed, trying PyPDF2:", e)
+        try:
+            reader = PdfReader(file_path)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text
+            print(f"PyPDF2 extracted {len(extracted_text)} characters")
+        except Exception as e2:
+            print("PyPDF2 also failed:", e2)
 
-    # 🗄 Save metadata + extracted text in database
+    chunks = chunk_text(extracted_text) if extracted_text else []
+    chunks_str = str(chunks)
+
     new_file = models.PDFFile(
         user_id=db_user.id,
         filename=file.filename,
         file_path=file_path,
-        extracted_text=extracted_text   # IMPORTANT FIELD
+        extracted_text=extracted_text,
+        chunks=chunks_str
     )
-
     db.add(new_file)
     db.commit()
 
     return {"message": "PDF uploaded successfully"}
 
 
-# 📥 Download PDF endpoint
-# This endpoint allows users to download their uploaded PDFs
 @router.get("/download/{file_id}")
 def download_pdf(
     file_id: int,
     db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
+    authorization: Optional[str] = Header(None)
 ):
-    # Get current user
-    db_user = db.query(models.User).filter(models.User.email == current_user).first()
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Find file in database
+    token = authorization.replace("Bearer ", "").strip()
+    current_user = verify_token(token)
+
+    db_user = db.query(models.User).filter(models.User.email == current_user).first()
     pdf_file = db.query(models.PDFFile).filter(models.PDFFile.id == file_id).first()
 
-    # If file not found
     if not pdf_file:
         raise HTTPException(status_code=404, detail="File not found")
-
-    # 🔒 Security check: ensure file belongs to logged-in user
     if pdf_file.user_id != db_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this file")
-
-    # Check file exists in system
+        raise HTTPException(status_code=403, detail="Not authorized")
     if not os.path.exists(pdf_file.file_path):
         raise HTTPException(status_code=404, detail="File not found on server")
 
-    # Return file as response
-    return FileResponse(
-        path=pdf_file.file_path,
-        filename=pdf_file.filename,
-        media_type="application/pdf"
-    )
+    return FileResponse(path=pdf_file.file_path, filename=pdf_file.filename, media_type="application/pdf")
